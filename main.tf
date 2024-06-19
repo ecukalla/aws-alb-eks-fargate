@@ -20,3 +20,7 @@ module "network" {
   source = "./modules/network/"
   availability_zones = data.aws_availability_zones.available.names
 }
+
+module "eks" {
+  source = "./modules/eks"
+}

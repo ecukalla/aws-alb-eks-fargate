@@ -17,28 +17,27 @@ resource "aws_subnet" "public" {
   tags = {
     name = "${var.vpc_name}-public"
   }
-
 }
 
-resource "aws_subnet" "ingress" {
+resource "aws_subnet" "ingress_private" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = var.private_subnet_cidrs[0]
   availability_zone       = var.availability_zones[0]
   map_public_ip_on_launch = false
 
   tags = {
-    name = "${var.vpc_name}-ingress"
+    name = "${var.vpc_name}-ingress-private"
   }
 }
 
-resource "aws_subnet" "rds" {
+resource "aws_subnet" "rds_private" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = var.private_subnet_cidrs[1]
   availability_zone       = var.availability_zones[1]
   map_public_ip_on_launch = false
 
   tags = {
-    name = "${var.vpc_name}-rds"
+    name = "${var.vpc_name}-rds-private"
   }
 }
 
@@ -68,12 +67,12 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
-resource "aws_eip" "nat" {
+resource "aws_eip" "nat_gateway_eip" {
   domain = "vpc"
 }
 
 resource "aws_nat_gateway" "nat" {
-  allocation_id = aws_eip.nat.id
+  allocation_id = aws_eip.nat_gateway_eip.id
   subnet_id     = aws_subnet.public.id
 
   tags = {
@@ -99,12 +98,12 @@ resource "aws_route_table" "private" {
 }
 
 resource "aws_route_table_association" "private_ingress" {
-  subnet_id      = aws_subnet.ingress.id
+  subnet_id      = aws_subnet.ingress_private.id
   route_table_id = aws_route_table.private.id
 }
 
 resource "aws_route_table_association" "private_rds" {
-  subnet_id      = aws_subnet.rds.id
+  subnet_id      = aws_subnet.rds_private.id
   route_table_id = aws_route_table.private.id
 }
 
@@ -118,6 +117,46 @@ resource "aws_security_group" "alb" {
     to_port = 443
     protocol = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port = 0
+    to_port = 0
+    protocol = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_security_group" "eks_cluster" {
+  name = "${var.vpc_name}-eks-cluster-sg"
+  description = "Security group for EKS cluster"
+  vpc_id = aws_vpc.main.id
+
+  ingress {
+    from_port = 80
+    to_port = 80
+    protocol = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
+
+  egress {
+    from_port = 0
+    to_port = 0
+    protocol = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_security_group" "rds" {
+  name = "${var.vpc_name}-rds-sg"
+  description = "Security group for RDS instance"
+  vpc_id = aws_vpc.main.id
+
+  ingress {
+    from_port = 3306
+    to_port = 3306
+    protocol = "tcp"
+    cidr_blocks = [aws_subnet.rds_private.cidr_block]
   }
 
   egress {
